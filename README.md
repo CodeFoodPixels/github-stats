@@ -18,7 +18,7 @@ This runs locally only — it talks directly to GitHub through your CLI session.
 Clone the repo and you're good to go — no install step needed.
 
 ```sh
-git clone <your-repo-url>
+git clone https://github.com/ShawnCockburn/github-stats.git
 cd github-stats
 ```
 
