@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub PR Stats</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 1000px; margin: 0 auto; padding: 2rem; background: #0d1117; color: #c9d1d9; }
+    h1 { margin-bottom: 1.5rem; color: #f0f6fc; }
+    h2 { margin: 2rem 0 1rem; color: #f0f6fc; font-size: 1.2rem; }
+    form { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: end; margin-bottom: 2rem; }
+    label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: #8b949e; }
+    input { padding: 0.5rem; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 0.9rem; }
+    input:focus { outline: none; border-color: #58a6ff; }
+    button { padding: 0.5rem 1.25rem; background: #238636; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; align-self: end; }
+    button:hover { background: #2ea043; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .summary { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; }
+    .summary p { margin: 0.25rem 0; }
+    .stat { color: #58a6ff; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #21262d; }
+    th { color: #8b949e; font-weight: 600; }
+    td { font-variant-numeric: tabular-nums; }
+    .chart-container { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; }
+    .error { color: #f85149; background: #161b22; border: 1px solid #f85149; border-radius: 6px; padding: 1rem; }
+    .hidden { display: none; }
+    #loading { color: #8b949e; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>GitHub PR Stats</h1>
+
+  <form id="queryForm">
+    <label>Owner <input name="owner" required placeholder="e.g. your-github-username"></label>
+    <label>Repo <input name="repo" required placeholder="e.g. my-repo"></label>
+    <label>Since <input name="since" type="date"></label>
+    <label>Authors <input name="authors" placeholder="alice,bob (optional)"></label>
+    <button type="submit" id="submitBtn">Analyse</button>
+  </form>
+
+  <div id="loading" class="hidden">Fetching data from GitHub...</div>
+  <div id="error" class="hidden error"></div>
+  <div id="results" class="hidden">
+    <div class="summary" id="summary"></div>
+
+    <h2>Percentiles</h2>
+    <table id="percentilesTable"></table>
+
+    <h2>Distribution</h2>
+    <div class="chart-container"><canvas id="chart"></canvas></div>
+
+    <h2>Author Breakdown</h2>
+    <table id="authorsTable"></table>
+
+    <h2>Pull Requests</h2>
+    <table id="prsTable"></table>
+  </div>
+
+  <script>
+    const form = document.getElementById('queryForm');
+    const sinceInput = form.querySelector('[name="since"]');
+
+    // Default: 1 month ago
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    sinceInput.value = d.toISOString().slice(0, 10);
+
+    let chartInstance = null;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const params = new URLSearchParams();
+      params.set('owner', fd.get('owner'));
+      params.set('repo', fd.get('repo'));
+      if (fd.get('since')) params.set('since', fd.get('since'));
+      if (fd.get('authors')) params.set('authors', fd.get('authors'));
+
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('results').classList.add('hidden');
+      document.getElementById('error').classList.add('hidden');
+      document.getElementById('submitBtn').disabled = true;
+
+      try {
+        const res = await fetch(`/api/analyse?${params}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        renderResults(data);
+      } catch (err) {
+        document.getElementById('error').textContent = err.message;
+        document.getElementById('error').classList.remove('hidden');
+      } finally {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('submitBtn').disabled = false;
+      }
+    });
+
+    function renderResults(data) {
+      // Summary
+      const avg = data.avgHoursToFirstApproval !== null
+        ? `${data.avgHoursToFirstApproval.toFixed(2)} hours`
+        : 'n/a';
+      document.getElementById('summary').innerHTML = `
+        <p>PRs considered: <span class="stat">${data.prsConsidered}</span></p>
+        <p>PRs with approval: <span class="stat">${data.prsWithApproval}</span></p>
+        <p>Average time to first approval: <span class="stat">${avg}</span> (business hours, excl. weekends)</p>
+      `;
+
+      // Percentiles table
+      const percTable = document.getElementById('percentilesTable');
+      percTable.innerHTML = '<tr><th>Percentile</th><th>Hours</th></tr>' +
+        data.overallPercentiles.map(p =>
+          `<tr><td>p${p.percentile}</td><td>${p.hours.toFixed(2)}</td></tr>`
+        ).join('');
+
+      // Chart
+      if (chartInstance) chartInstance.destroy();
+      const ctx = document.getElementById('chart').getContext('2d');
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.chartData.map(p => `p${p.percentile}`),
+          datasets: [{
+            label: 'Hours to first approval',
+            data: data.chartData.map(p => p.hours),
+            backgroundColor: '#238636',
+            borderColor: '#2ea043',
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              type: 'logarithmic',
+              title: { display: true, text: 'Hours (log)', color: '#8b949e' },
+              grid: { color: '#21262d' },
+              ticks: { color: '#8b949e' },
+            },
+            x: {
+              grid: { color: '#21262d' },
+              ticks: { color: '#8b949e' },
+            },
+          },
+          plugins: {
+            legend: { labels: { color: '#c9d1d9' } },
+          },
+        },
+      });
+
+      // Author breakdown
+      const authTable = document.getElementById('authorsTable');
+      if (data.authorBreakdowns.length > 0) {
+        authTable.innerHTML = '<tr><th>Author</th><th>PRs</th><th>Avg</th><th>p10</th><th>p25</th><th>p50</th><th>p75</th><th>p90</th></tr>' +
+          data.authorBreakdowns.map(a => {
+            const pm = Object.fromEntries(a.percentiles.map(p => [p.percentile, p.hours]));
+            return `<tr><td>${esc(a.author)}</td><td>${a.prCount}</td><td>${a.avgHours.toFixed(2)}</td><td>${(pm[10]||0).toFixed(2)}</td><td>${(pm[25]||0).toFixed(2)}</td><td>${(pm[50]||0).toFixed(2)}</td><td>${(pm[75]||0).toFixed(2)}</td><td>${(pm[90]||0).toFixed(2)}</td></tr>`;
+          }).join('');
+      } else {
+        authTable.innerHTML = '';
+      }
+
+      // PR list
+      const prsTable = document.getElementById('prsTable');
+      prsTable.innerHTML = '<tr><th>#</th><th>Author</th><th>Title</th><th>Hours</th></tr>' +
+        data.prs.map(pr =>
+          `<tr><td>${pr.number}</td><td>${esc(pr.author)}</td><td>${esc(pr.title)}</td><td>${pr.businessHours !== null ? pr.businessHours.toFixed(2) : 'pending'}</td></tr>`
+        ).join('');
+
+      document.getElementById('results').classList.remove('hidden');
+    }
+
+    function esc(s) {
+      const el = document.createElement('span');
+      el.textContent = s;
+      return el.innerHTML;
+    }
+  </script>
+</body>
+</html>
