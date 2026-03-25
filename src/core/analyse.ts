@@ -44,6 +44,8 @@ export function analyse(
       ? durations.reduce((a, b) => a + b, 0) / durations.length
       : null;
 
+  const med = median(durations)
+
   const authorBreakdowns: AuthorBreakdown[] = [...perAuthor.entries()]
     .map(([author, vals]) => ({
       author,
@@ -58,9 +60,29 @@ export function analyse(
     prs: details,
     prsConsidered: prs.length,
     prsWithApproval: durations.length,
-    avgHoursToFirstApproval: avg,
+    meanHoursToFirstApproval: avg,
+    medianHoursToFirstApproval: med,
     overallPercentiles: standardPercentiles(durations),
     chartData: chartPercentiles(durations),
     authorBreakdowns,
   };
+}
+
+function median(values: number[]): number|null {
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  // Sorting values, preventing original array
+  // from being mutated.
+  values = [...values].sort((a, b) => a - b);
+
+  const half = Math.floor(values.length / 2);
+
+  return (values.length % 2
+    ? values[half]
+    : (values[half - 1] + values[half]) / 2
+  );
+
 }

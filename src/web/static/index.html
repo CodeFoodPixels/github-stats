@@ -104,13 +104,17 @@
 
     function renderResults(data) {
       // Summary
-      const avg = data.avgHoursToFirstApproval !== null
-        ? `${data.avgHoursToFirstApproval.toFixed(2)} hours`
+      const mean = data.meanHoursToFirstApproval !== null
+        ? `${data.meanHoursToFirstApproval.toFixed(2)} hours`
+        : 'n/a';
+      const median = data.medianHoursToFirstApproval !== null
+        ? `${data.medianHoursToFirstApproval.toFixed(2)} hours`
         : 'n/a';
       document.getElementById('summary').innerHTML = `
         <p>PRs considered: <span class="stat">${data.prsConsidered}</span></p>
         <p>PRs with approval: <span class="stat">${data.prsWithApproval}</span></p>
-        <p>Average time to first approval: <span class="stat">${avg}</span> (business hours, excl. weekends)</p>
+        <p>Mean time to first approval: <span class="stat">${mean}</span> (business hours, excl. weekends)</p>
+        <p>Median time to first approval: <span class="stat">${med}</span> (business hours, excl. weekends)</p>
       `;
 
       // Percentiles table

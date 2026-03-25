@@ -24,7 +24,8 @@ Deno.test("empty PR list", () => {
   const result = analyse(query, []);
   assertEquals(result.prsConsidered, 0);
   assertEquals(result.prsWithApproval, 0);
-  assertEquals(result.avgHoursToFirstApproval, null);
+  assertEquals(result.meanHoursToFirstApproval, null);
+  assertEquals(result.medianHoursToFirstApproval, null);
   assertEquals(result.overallPercentiles, []);
   assertEquals(result.chartData, []);
   assertEquals(result.authorBreakdowns, []);
@@ -41,7 +42,8 @@ Deno.test("single PR with approval", () => {
   const result = analyse(query, prs);
   assertEquals(result.prsConsidered, 1);
   assertEquals(result.prsWithApproval, 1);
-  assertAlmostEquals(result.avgHoursToFirstApproval!, 8, 0.001);
+  assertAlmostEquals(result.meanHoursToFirstApproval!, 8, 0.001);
+  assertAlmostEquals(result.medianHoursToFirstApproval!, 8, 0.001);
   assertEquals(result.overallPercentiles.length, 5);
   assertEquals(result.chartData.length, 21);
 });

@@ -51,7 +51,8 @@ export interface AnalysisResult {
   prs: PrDetail[];
   prsConsidered: number;
   prsWithApproval: number;
-  avgHoursToFirstApproval: number | null;
+  meanHoursToFirstApproval: number | null;
+  medianHoursToFirstApproval: number | null;
   overallPercentiles: PercentileEntry[];
   chartData: ChartPoint[];
   authorBreakdowns: AuthorBreakdown[];
